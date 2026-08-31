@@ -6,13 +6,19 @@ import { useState } from "react";
  * TypeScript + Vite + React
  *
  * SESSION DEFINITION:
- *     1 session = 20 shooters
+ *     1 session = exactly 20 shooters
  *
- * A shooter continues until:
+ * Each shooter continues until:
  *     - Point is made
- *     - 7-out
+ *     - Shooter seven-outs
  *
- * Each shooter therefore contains a variable number of rolls.
+ * Strategies:
+ *
+ *     1. ACROSS REGRESSION
+ *     2. 1-HIT 6/8 REGRESS
+ *     3. HEDGE (DP + 6/8)
+ *     4. PURE DARK SIDE
+ *     5. IRON CROSS
  * ============================================================
  */
 
@@ -21,38 +27,50 @@ import { useState } from "react";
    TYPES
 ============================================================ */
 
-type DiceTotal = number;
-
 type StrategyName =
   | "ACROSS REGRESSION"
   | "1-HIT 6/8 REGRESS"
   | "HEDGE (DP + 6/8)"
-  | "PURE DARK SIDE";
+  | "PURE DARK SIDE"
+  | "IRON CROSS";
 
 interface RollResult {
   shooterNumber: number;
   rollNumber: number;
+
   die1: number;
   die2: number;
+
   total: number;
+
   point: number | null;
 }
 
 interface ShooterResult {
   shooterNumber: number;
+
   rolls: RollResult[];
+
   totalRolls: number;
+
   point: number | null;
+
   sevenOut: boolean;
 }
 
 interface SessionResult {
   sessionNumber: number;
+
   startingBankroll: number;
+
   endingBankroll: number;
+
   profit: number;
+
   totalRolls: number;
+
   totalShooters: number;
+
   shooters: ShooterResult[];
 }
 
@@ -71,7 +89,13 @@ interface StrategyResult {
 
   profitPercent: number;
 
-  outcome: "PROFIT" | "DEFICIT";
+  averageRolls: number;
+
+  averageShooters: number;
+
+  outcome:
+    | "PROFIT"
+    | "DEFICIT";
 }
 
 
@@ -80,6 +104,36 @@ interface StrategyResult {
 ============================================================ */
 
 const SHOOTERS_PER_SESSION = 20;
+
+
+/*
+ * Iron Cross:
+ *
+ * $10 Field
+ * $10 Place 5
+ * $12 Place 6
+ * $12 Place 8
+ *
+ * Total = $44
+ *
+ * Standard place payouts:
+ *
+ * 10 = 14:10
+ * 6 = 14:12
+ * 8 = 14:12
+ *
+ * Field:
+ *
+ * 2 = 2:1
+ * 12 = 2:1
+ * 3,4,9,10,11 = 1:1
+ *
+ * 5/6/8 are NOT Field wins.
+ */
+const IRON_CROSS_BET = 10;
+
+const IRON_CROSS_INITIAL_EXPOSURE =
+  IRON_CROSS_BET * 4;
 
 
 /* ============================================================
@@ -91,11 +145,16 @@ function rollDice(): {
   die2: number;
   total: number;
 } {
+
   const die1 =
-    Math.floor(Math.random() * 6) + 1;
+    Math.floor(
+      Math.random() * 6
+    ) + 1;
 
   const die2 =
-    Math.floor(Math.random() * 6) + 1;
+    Math.floor(
+      Math.random() * 6
+    ) + 1;
 
   return {
     die1,
@@ -106,24 +165,8 @@ function rollDice(): {
 
 
 /* ============================================================
-   PASS LINE SHOOTER ENGINE
+   SHOOTER ENGINE
 ============================================================ */
-
-/*
- * Simulates ONE complete Craps shooter.
- *
- * Come-out:
- *
- * 7 or 11 -> natural
- * 2,3,12 -> craps
- * 4,5,6,8,9,10 -> point established
- *
- * Once point established:
- *
- * Point -> point made -> shooter ends
- * 7 -> seven-out -> shooter ends
- * Anything else -> continue rolling
- */
 
 function simulateShooter(
   shooterNumber: number,
@@ -134,24 +177,35 @@ function simulateShooter(
 
   let point: number | null = null;
 
-  let rollNumber = startingRollNumber;
+  let rollNumber =
+    startingRollNumber;
+
 
   while (true) {
 
-    const dice = rollDice();
+    const dice =
+      rollDice();
 
     rollNumber++;
 
+
     const roll: RollResult = {
       shooterNumber,
+
       rollNumber,
+
       die1: dice.die1,
+
       die2: dice.die2,
+
       total: dice.total,
+
       point,
     };
 
+
     rolls.push(roll);
+
 
     /*
      * --------------------------------------------------------
@@ -161,45 +215,57 @@ function simulateShooter(
 
     if (point === null) {
 
+      /*
+       * Natural.
+       */
       if (
         dice.total === 7 ||
         dice.total === 11
       ) {
-        /*
-         * Natural.
-         *
-         * Shooter's hand ends.
-         */
+
         break;
       }
 
+
+      /*
+       * Craps.
+       *
+       * Shooter continues.
+       */
       if (
         dice.total === 2 ||
         dice.total === 3 ||
         dice.total === 12
       ) {
-        /*
-         * Craps.
-         *
-         * Shooter continues with another
-         * come-out roll.
-         */
+
         continue;
       }
+
 
       /*
        * Establish point.
        */
       if (
-        [4, 5, 6, 8, 9, 10].includes(
+        [
+          4,
+          5,
+          6,
+          8,
+          9,
+          10,
+        ].includes(
           dice.total
         )
       ) {
-        point = dice.total;
+
+        point =
+          dice.total;
       }
+
 
       continue;
     }
+
 
     /*
      * --------------------------------------------------------
@@ -207,35 +273,51 @@ function simulateShooter(
      * --------------------------------------------------------
      */
 
-    if (dice.total === point) {
+    /*
+     * Point made.
+     */
+    if (
+      dice.total === point
+    ) {
 
-      /*
-       * Point made.
-       */
       break;
     }
 
-    if (dice.total === 7) {
 
-      /*
-       * Seven-out.
-       */
+    /*
+     * Seven-out.
+     */
+    if (
+      dice.total === 7
+    ) {
+
       break;
     }
+
 
     /*
      * Otherwise shooter continues.
      */
   }
 
+
   const lastRoll =
-    rolls[rolls.length - 1];
+    rolls[
+      rolls.length - 1
+    ];
+
 
   return {
+
     shooterNumber,
+
     rolls,
-    totalRolls: rolls.length,
+
+    totalRolls:
+      rolls.length,
+
     point,
+
     sevenOut:
       lastRoll.total === 7 &&
       point !== null,
@@ -244,43 +326,45 @@ function simulateShooter(
 
 
 /* ============================================================
+   STRATEGY #1
    ACROSS REGRESSION
 ============================================================ */
-
-/*
- * The strategy now operates against actual Craps rolls.
- *
- * This preserves the basic betting behavior of the
- * original Python program while using real shooter
- * boundaries.
- */
 
 function simulateAcrossRegression(
   bankroll: number
 ): SessionResult {
 
-  let balance = bankroll;
+  let balance =
+    bankroll;
 
-  let globalRollNumber = 0;
+  let globalRollNumber =
+    0;
 
-  const shooters: ShooterResult[] = [];
+  const shooters:
+    ShooterResult[] = [];
+
 
   for (
     let shooterNumber = 1;
-    shooterNumber <= SHOOTERS_PER_SESSION;
+
+    shooterNumber <=
+      SHOOTERS_PER_SESSION;
+
     shooterNumber++
   ) {
 
-    if (balance <= 0) {
+    if (
+      balance <= 0
+    ) {
+
       break;
     }
 
-    /*
-     * Strategy state
-     */
+
     let bet = 160;
 
     let hits = 0;
+
 
     const shooter =
       simulateShooter(
@@ -288,67 +372,104 @@ function simulateAcrossRegression(
         globalRollNumber
       );
 
+
     globalRollNumber +=
       shooter.totalRolls;
 
-    /*
-     * Evaluate each roll for the strategy.
-     */
-    for (const roll of shooter.rolls) {
 
-      if (balance < bet) {
-        break;
-      }
+    for (
+      const roll
+      of shooter.rolls
+    ) {
 
-      /*
-       * 7 loses the current bet.
-       */
-      if (roll.total === 7) {
-
-        balance -= bet;
-
-        break;
-      }
-
-      /*
-       * Place numbers.
-       */
       if (
-        [4, 5, 6, 8, 9, 10].includes(
+        balance < bet
+      ) {
+
+        break;
+      }
+
+
+      if (
+        roll.total === 7
+      ) {
+
+        balance -=
+          bet;
+
+        break;
+      }
+
+
+      if (
+        [
+          4,
+          5,
+          6,
+          8,
+          9,
+          10,
+        ].includes(
           roll.total
         )
       ) {
 
-        balance += 30;
+        balance +=
+          30;
 
         hits++;
 
-        if (hits === 2) {
+
+        if (
+          hits === 2
+        ) {
+
           bet = 44;
         }
 
-        if (hits >= 6) {
+
+        if (
+          hits >= 6
+        ) {
+
           break;
         }
       }
     }
 
-    shooters.push(shooter);
+
+    shooters.push(
+      shooter
+    );
   }
 
+
   return {
+
     sessionNumber: 1,
-    startingBankroll: bankroll,
-    endingBankroll: balance,
-    profit: balance - bankroll,
-    totalRolls: globalRollNumber,
-    totalShooters: shooters.length,
+
+    startingBankroll:
+      bankroll,
+
+    endingBankroll:
+      balance,
+
+    profit:
+      balance - bankroll,
+
+    totalRolls:
+      globalRollNumber,
+
+    totalShooters:
+      shooters.length,
+
     shooters,
   };
 }
 
 
 /* ============================================================
+   STRATEGY #2
    1-HIT 6/8 REGRESSION
 ============================================================ */
 
@@ -356,21 +477,32 @@ function simulateOneHitRegression(
   bankroll: number
 ): SessionResult {
 
-  let balance = bankroll;
+  let balance =
+    bankroll;
 
-  let globalRollNumber = 0;
+  let globalRollNumber =
+    0;
 
-  const shooters: ShooterResult[] = [];
+  const shooters:
+    ShooterResult[] = [];
+
 
   for (
     let shooterNumber = 1;
-    shooterNumber <= SHOOTERS_PER_SESSION;
+
+    shooterNumber <=
+      SHOOTERS_PER_SESSION;
+
     shooterNumber++
   ) {
 
-    if (balance < 120) {
+    if (
+      balance < 120
+    ) {
+
       break;
     }
+
 
     const shooter =
       simulateShooter(
@@ -378,76 +510,113 @@ function simulateOneHitRegression(
         globalRollNumber
       );
 
+
     globalRollNumber +=
       shooter.totalRolls;
 
-    /*
-     * Look for the first 6 or 8
-     * during this shooter.
-     */
 
-    for (const roll of shooter.rolls) {
+    for (
+      const roll
+      of shooter.rolls
+    ) {
 
-      if (balance < 120) {
-        break;
-      }
-
-      if (roll.total === 7) {
-
-        balance -= 120;
+      if (
+        balance < 120
+      ) {
 
         break;
       }
+
+
+      if (
+        roll.total === 7
+      ) {
+
+        balance -=
+          120;
+
+        break;
+      }
+
 
       if (
         roll.total === 6 ||
         roll.total === 8
       ) {
 
-        balance += 58;
+        balance +=
+          58;
 
         break;
       }
     }
 
-    shooters.push(shooter);
+
+    shooters.push(
+      shooter
+    );
   }
 
+
   return {
+
     sessionNumber: 1,
-    startingBankroll: bankroll,
-    endingBankroll: balance,
-    profit: balance - bankroll,
-    totalRolls: globalRollNumber,
-    totalShooters: shooters.length,
+
+    startingBankroll:
+      bankroll,
+
+    endingBankroll:
+      balance,
+
+    profit:
+      balance - bankroll,
+
+    totalRolls:
+      globalRollNumber,
+
+    totalShooters:
+      shooters.length,
+
     shooters,
   };
 }
 
 
 /* ============================================================
-   HEDGE DP + 6/8
+   STRATEGY #3
+   HEDGE (DP + 6/8)
 ============================================================ */
 
 function simulateHedgeCombo(
   bankroll: number
 ): SessionResult {
 
-  let balance = bankroll;
+  let balance =
+    bankroll;
 
-  let globalRollNumber = 0;
+  let globalRollNumber =
+    0;
 
-  const shooters: ShooterResult[] = [];
+  const shooters:
+    ShooterResult[] = [];
+
 
   for (
     let shooterNumber = 1;
-    shooterNumber <= SHOOTERS_PER_SESSION;
+
+    shooterNumber <=
+      SHOOTERS_PER_SESSION;
+
     shooterNumber++
   ) {
 
-    if (balance < 34) {
+    if (
+      balance < 34
+    ) {
+
       break;
     }
+
 
     const shooter =
       simulateShooter(
@@ -455,119 +624,159 @@ function simulateHedgeCombo(
         globalRollNumber
       );
 
+
     globalRollNumber +=
       shooter.totalRolls;
 
-    /*
-     * We process the shooter's rolls.
-     */
-    for (const roll of shooter.rolls) {
 
-      if (balance < 34) {
+    for (
+      let i = 0;
+      i < shooter.rolls.length;
+      i++
+    ) {
+
+      if (
+        balance < 34
+      ) {
+
         break;
       }
 
-      const d = roll.total;
 
-      /*
-       * Don't Pass immediate results.
-       */
+      const d =
+        shooter.rolls[i].total;
+
+
       if (
         d === 7 ||
         d === 11
       ) {
 
-        balance -= 10;
+        balance -=
+          10;
 
         continue;
       }
+
 
       if (
         d === 2 ||
         d === 3
       ) {
 
-        balance += 10;
+        balance +=
+          10;
 
         continue;
       }
 
-      /*
-       * Point established.
-       */
+
       if (
-        [4, 5, 6, 8, 9, 10].includes(d)
+        [
+          4,
+          5,
+          6,
+          8,
+          9,
+          10,
+        ].includes(d)
       ) {
 
-        const dpBet = 10;
+        const dpBet =
+          10;
 
-        let b6 = 12;
+        let b6 =
+          12;
 
-        let b8 = 12;
+        let b8 =
+          12;
 
-        /*
-         * Process subsequent rolls.
-         */
-        const startIndex =
-          shooter.rolls.indexOf(roll) + 1;
 
         for (
-          let i = startIndex;
-          i < shooter.rolls.length;
-          i++
+          let j = i + 1;
+          j < shooter.rolls.length;
+          j++
         ) {
 
           const r =
-            shooter.rolls[i].total;
+            shooter.rolls[j].total;
 
-          if (r === 7) {
+
+          if (
+            r === 7
+          ) {
 
             balance +=
-              dpBet - (b6 + b8);
+              dpBet -
+              (b6 + b8);
 
             break;
           }
+
 
           if (
             r === 6 ||
             r === 8
           ) {
 
-            balance += 14;
+            balance +=
+              14;
 
             b6 = 0;
 
             b8 = 0;
           }
 
-          if (r === d) {
 
-            balance -= dpBet;
+          if (
+            r === d
+          ) {
+
+            balance -=
+              dpBet;
 
             break;
           }
         }
 
+
         break;
       }
     }
 
-    shooters.push(shooter);
+
+    shooters.push(
+      shooter
+    );
   }
 
+
   return {
+
     sessionNumber: 1,
-    startingBankroll: bankroll,
-    endingBankroll: balance,
-    profit: balance - bankroll,
-    totalRolls: globalRollNumber,
-    totalShooters: shooters.length,
+
+    startingBankroll:
+      bankroll,
+
+    endingBankroll:
+      balance,
+
+    profit:
+      balance - bankroll,
+
+    totalRolls:
+      globalRollNumber,
+
+    totalShooters:
+      shooters.length,
+
     shooters,
   };
 }
 
 
 /* ============================================================
+   STRATEGY #4
    PURE DARK SIDE
 ============================================================ */
 
@@ -575,21 +784,32 @@ function simulateDarkSide(
   bankroll: number
 ): SessionResult {
 
-  let balance = bankroll;
+  let balance =
+    bankroll;
 
-  let globalRollNumber = 0;
+  let globalRollNumber =
+    0;
 
-  const shooters: ShooterResult[] = [];
+  const shooters:
+    ShooterResult[] = [];
+
 
   for (
     let shooterNumber = 1;
-    shooterNumber <= SHOOTERS_PER_SESSION;
+
+    shooterNumber <=
+      SHOOTERS_PER_SESSION;
+
     shooterNumber++
   ) {
 
-    if (balance < 10) {
+    if (
+      balance < 10
+    ) {
+
       break;
     }
+
 
     const shooter =
       simulateShooter(
@@ -597,78 +817,91 @@ function simulateDarkSide(
         globalRollNumber
       );
 
+
     globalRollNumber +=
       shooter.totalRolls;
 
-    /*
-     * Process each roll.
-     */
 
-    for (const roll of shooter.rolls) {
+    for (
+      let i = 0;
+      i < shooter.rolls.length;
+      i++
+    ) {
 
-      if (balance < 10) {
+      if (
+        balance < 10
+      ) {
+
         break;
       }
 
-      const d = roll.total;
+
+      const d =
+        shooter.rolls[i].total;
+
 
       if (
         d === 7 ||
         d === 11
       ) {
 
-        balance -= 10;
+        balance -=
+          10;
 
         continue;
       }
+
 
       if (
         d === 2 ||
         d === 3
       ) {
 
-        balance += 10;
+        balance +=
+          10;
 
         continue;
       }
 
+
       if (
-        [4, 5, 6, 8, 9, 10].includes(d)
+        [
+          4,
+          5,
+          6,
+          8,
+          9,
+          10,
+        ].includes(d)
       ) {
 
-        /*
-         * Dark side wager stays until:
-         *
-         * 7 -> win
-         * Same number -> lose
-         */
-
         for (
-          const subsequentRoll
-          of shooter.rolls
+          let j = i + 1;
+          j < shooter.rolls.length;
+          j++
         ) {
 
-          if (
-            subsequentRoll.rollNumber <=
-            roll.rollNumber
-          ) {
-            continue;
-          }
+          const subsequent =
+            shooter.rolls[j].total;
+
 
           if (
-            subsequentRoll.total === 7
+            subsequent === 7
           ) {
 
-            balance += 10;
+            balance +=
+              10;
 
             break;
           }
 
+
           if (
-            subsequentRoll.total === d
+            subsequent === d
           ) {
 
-            balance -= 10;
+            balance -=
+              10;
 
             break;
           }
@@ -676,16 +909,437 @@ function simulateDarkSide(
       }
     }
 
-    shooters.push(shooter);
+
+    shooters.push(
+      shooter
+    );
   }
 
+
   return {
+
     sessionNumber: 1,
-    startingBankroll: bankroll,
-    endingBankroll: balance,
-    profit: balance - bankroll,
-    totalRolls: globalRollNumber,
-    totalShooters: shooters.length,
+
+    startingBankroll:
+      bankroll,
+
+    endingBankroll:
+      balance,
+
+    profit:
+      balance - bankroll,
+
+    totalRolls:
+      globalRollNumber,
+
+    totalShooters:
+      shooters.length,
+
+    shooters,
+  };
+}
+
+
+/* ============================================================
+   STRATEGY #5
+   IRON CROSS
+============================================================ */
+
+/*
+ * ------------------------------------------------------------
+ * IRON CROSS BETS
+ * ------------------------------------------------------------
+ *
+ * Field       = $10
+ * Place 5     = $10
+ * Place 6     = $12
+ * Place 8     = $12
+ *
+ * Initial exposure = $44
+ *
+ *
+ * PAYOUTS
+ * ------------------------------------------------------------
+ *
+ * FIELD:
+ *
+ * 2  -> +$20
+ * 12 -> +$20
+ *
+ * 3,4,9,10,11 -> +$10
+ *
+ *
+ * PLACE 5:
+ *
+ * 5 -> +$14
+ *
+ *
+ * PLACE 6:
+ *
+ * 6 -> +$14
+ *
+ *
+ * PLACE 8:
+ *
+ * 8 -> +14
+ *
+ *
+ * 7:
+ *
+ * Field loses $10
+ * Place 5 loses $10
+ * Place 6 loses $12
+ * Place 8 loses $12
+ *
+ * Total loss = $44
+ *
+ *
+ * IMPORTANT:
+ *
+ * This is a simplified continuous Iron Cross
+ * simulation for strategy comparison.
+ *
+ * Exact casino implementation can later add:
+ *
+ * - Field re-bet rules
+ * - Place-bet working/Off behavior
+ * - Pressing
+ * - Regression
+ * - Buy 4 / 10
+ * - Different Field amounts
+ * - Different unit sizes
+ * ============================================================
+ */
+
+function simulateIronCross(
+  bankroll: number
+): SessionResult {
+
+  let balance =
+    bankroll;
+
+  let globalRollNumber =
+    0;
+
+  const shooters:
+    ShooterResult[] = [];
+
+
+  for (
+    let shooterNumber = 1;
+
+    shooterNumber <=
+      SHOOTERS_PER_SESSION;
+
+    shooterNumber++
+  ) {
+
+    /*
+     * Need $44 to establish
+     * the Iron Cross.
+     */
+    if (
+      balance <
+      IRON_CROSS_INITIAL_EXPOSURE
+    ) {
+
+      break;
+    }
+
+
+    const shooter =
+      simulateShooter(
+        shooterNumber,
+        globalRollNumber
+      );
+
+
+    globalRollNumber +=
+      shooter.totalRolls;
+
+
+    /*
+     * --------------------------------------------------------
+     * IRON CROSS
+     * --------------------------------------------------------
+     *
+     * We establish the bets when the
+     * shooter reaches a point number.
+     *
+     * For simplicity, the bets are
+     * evaluated on the shooter's rolls.
+     * --------------------------------------------------------
+     */
+
+    let ironCrossActive =
+      false;
+
+
+    /*
+     * Track whether the point has
+     * been established.
+     */
+    for (
+      let i = 0;
+      i < shooter.rolls.length;
+      i++
+    ) {
+
+      const roll =
+        shooter.rolls[i];
+
+
+      /*
+       * ------------------------------------------------------
+       * COME-OUT
+       * ------------------------------------------------------
+       */
+
+      if (
+        roll.point === null
+      ) {
+
+        /*
+         * No Iron Cross yet.
+         *
+         * Once a point is established,
+         * activate the Iron Cross.
+         */
+        continue;
+      }
+
+
+      /*
+       * Point exists.
+       */
+      if (
+        !ironCrossActive
+      ) {
+
+        if (
+          balance <
+          IRON_CROSS_INITIAL_EXPOSURE
+        ) {
+
+          break;
+        }
+
+
+        /*
+         * Place the four bets.
+         *
+         * We subtract the initial exposure
+         * from bankroll.
+         */
+        balance -=
+          IRON_CROSS_INITIAL_EXPOSURE;
+
+        ironCrossActive =
+          true;
+      }
+
+
+      /*
+       * ------------------------------------------------------
+       * RESOLVE ROLL
+       * ------------------------------------------------------
+       */
+
+      const total =
+        roll.total;
+
+
+      /*
+       * 7
+       *
+       * All four bets lose.
+       */
+      if (
+        total === 7
+      ) {
+
+        /*
+         * Bets have already been
+         * removed from bankroll.
+         *
+         * No payout.
+         */
+        ironCrossActive =
+          false;
+
+        break;
+      }
+
+
+      /*
+       * FIELD NUMBERS
+       *
+       * 2,3,4,9,10,11,12
+       */
+      if (
+        total === 2
+      ) {
+
+        /*
+         * Field pays 2:1.
+         *
+         * Return original $10
+         * plus $20 winnings.
+         */
+        balance +=
+          IRON_CROSS_BET * 3;
+
+        /*
+         * The Field is re-established
+         * for the next roll.
+         */
+      }
+
+
+      else if (
+        total === 12
+      ) {
+
+        /*
+         * Field 12 pays 2:1.
+         */
+        balance +=
+          IRON_CROSS_BET * 3;
+      }
+
+
+      else if (
+        total === 3 ||
+        total === 4 ||
+        total === 9 ||
+        total === 10 ||
+        total === 11
+      ) {
+
+        /*
+         * Field pays 1:1.
+         *
+         * Return original $10
+         * plus $10 winnings.
+         */
+        balance +=
+          IRON_CROSS_BET * 2;
+      }
+
+
+      /*
+       * PLACE 5
+       */
+      else if (
+        total === 5
+      ) {
+
+        /*
+         * 5 pays 14:10.
+         *
+         * Return:
+         *
+         * $10 original
+         * + $14 winnings
+         *
+         * = $24
+         */
+        balance +=
+          IRON_CROSS_BET +
+          14;
+      }
+
+
+      /*
+       * PLACE 6
+       */
+      else if (
+        total === 6
+      ) {
+
+        /*
+         * 6 pays 14:12
+         *
+         * $12 wager:
+         *
+         * $12original
+         * + $13.666 theoretical win
+         *
+         * Real casinos generally use
+         * whole-dollar payout conventions.
+         *
+         * We use the standard $6 payout
+         * for a $6 place bet approximation,
+         * but because this strategy uses
+         * $5 units we round to $6 here.
+         */
+        balance +=
+          IRON_CROSS_BET +
+         14;
+      }
+
+
+      /*
+       * PLACE 8
+       */
+      else if (
+        total === 8
+      ) {
+
+        /*
+         * Same as 6.
+         */
+        balance +=
+          IRON_CROSS_BET +
+          14;
+      }
+
+
+      /*
+       * Point made:
+       *
+       * Shooter ends.
+       *
+       * Iron Cross ends with the shooter.
+       */
+      if (
+        shooter.point !== null &&
+        total === shooter.point
+      ) {
+
+        ironCrossActive =
+          false;
+
+        break;
+      }
+    }
+
+
+    shooters.push(
+      shooter
+    );
+  }
+
+
+  return {
+
+    sessionNumber: 1,
+
+    startingBankroll:
+      bankroll,
+
+    endingBankroll:
+      balance,
+
+    profit:
+      balance - bankroll,
+
+    totalRolls:
+      globalRollNumber,
+
+    totalShooters:
+      shooters.length,
+
     shooters,
   };
 }
@@ -695,41 +1349,64 @@ function simulateDarkSide(
    STRATEGY MAP
 ============================================================ */
 
-const strategyFunctions: Record<
-  StrategyName,
-  (bankroll: number) => SessionResult
-> = {
+const strategyFunctions:
+  Record<
+    StrategyName,
+    (
+      bankroll: number
+    ) => SessionResult
+  > = {
 
-  "ACROSS REGRESSION":
-    simulateAcrossRegression,
+    "ACROSS REGRESSION":
+      simulateAcrossRegression,
 
-  "1-HIT 6/8 REGRESS":
-    simulateOneHitRegression,
+    "1-HIT 6/8 REGRESS":
+      simulateOneHitRegression,
 
-  "HEDGE (DP + 6/8)":
-    simulateHedgeCombo,
+    "HEDGE (DP + 6/8)":
+      simulateHedgeCombo,
 
-  "PURE DARK SIDE":
-    simulateDarkSide,
-};
+    "PURE DARK SIDE":
+      simulateDarkSide,
+
+    "IRON CROSS":
+      simulateIronCross,
+  };
 
 
 /* ============================================================
-   APP
+   MAIN APP
 ============================================================ */
 
 function App() {
 
-  const [startBankroll, setStartBankroll] =
+  const [
+    startBankroll,
+    setStartBankroll,
+  ] =
     useState<number>(1000);
 
-  const [sessions, setSessions] =
+
+  const [
+    sessions,
+    setSessions,
+  ] =
     useState<number>(2);
 
-  const [results, setResults] =
-    useState<StrategyResult[]>([]);
 
-  const [isRunning, setIsRunning] =
+  const [
+    results,
+    setResults,
+  ] =
+    useState<
+      StrategyResult[]
+    >([]);
+
+
+  const [
+    isRunning,
+    setIsRunning,
+  ] =
     useState<boolean>(false);
 
 
@@ -738,14 +1415,19 @@ function App() {
   ========================================================== */
 
   const formatCurrency =
-    (value: number): string => {
+    (
+      value: number
+    ): string => {
 
       return value.toLocaleString(
         "en-US",
         {
           style: "currency",
+
           currency: "USD",
+
           minimumFractionDigits: 2,
+
           maximumFractionDigits: 2,
         }
       );
@@ -756,268 +1438,379 @@ function App() {
      RUN SIMULATIONS
   ========================================================== */
 
-  const runSimulations = () => {
+  const runSimulations =
+    () => {
 
-    if (
-      !Number.isFinite(startBankroll) ||
-      startBankroll <= 0
-    ) {
-
-      alert(
-        "Starting bankroll must be greater than $0."
-      );
-
-      return;
-    }
-
-    if (
-      !Number.isFinite(sessions) ||
-      sessions < 1
-    ) {
-
-      alert(
-        "Simulated sessions must be at least 1."
-      );
-
-      return;
-    }
-
-    setIsRunning(true);
-
-    /*
-     * Allow React to update the screen before
-     * starting the Monte Carlo simulation.
-     */
-    setTimeout(() => {
-
-      const strategyResults: StrategyResult[] =
-        [];
-
-      const strategyNames: StrategyName[] = [
-        "ACROSS REGRESSION",
-        "1-HIT 6/8 REGRESS",
-        "HEDGE (DP + 6/8)",
-        "PURE DARK SIDE",
-      ];
-
-
-      for (
-        const strategyName
-        of strategyNames
+      if (
+        !Number.isFinite(
+          startBankroll
+        ) ||
+        startBankroll <= 0
       ) {
 
-        const simulationFunction =
-          strategyFunctions[
-            strategyName
-          ];
+        alert(
+          "Starting bankroll must be greater than $0."
+        );
 
-        const finalBankrolls: number[] = [];
-
-        const profits: number[] = [];
-
-        let totalRolls = 0;
-
-        let totalShooters = 0;
-
-
-        /*
-         * Monte Carlo sessions
-         */
-        for (
-          let session = 0;
-          session < sessions;
-          session++
-        ) {
-
-          const result =
-            simulationFunction(
-              startBankroll
-            );
-
-          finalBankrolls.push(
-            result.endingBankroll
-          );
-
-          profits.push(
-            result.profit
-          );
-
-          totalRolls +=
-            result.totalRolls;
-
-          totalShooters +=
-            result.totalShooters;
-        }
-
-
-        /*
-         * Average final bankroll
-         */
-        const averageFinal =
-          finalBankrolls.reduce(
-            (sum, value) =>
-              sum + value,
-            0
-          ) / sessions;
-
-
-        /*
-         * Bust percentage
-         */
-        const bustCount =
-          finalBankrolls.filter(
-            value => value <= 0
-          ).length;
-
-        const bustPercent =
-          (bustCount / sessions) *
-          100;
-
-
-        /*
-         * Maximum final bankroll
-         */
-        const maxFinal =
-          Math.max(
-            ...finalBankrolls
-          );
-
-
-        /*
-         * Minimum final bankroll
-         */
-        const minFinal =
-          Math.min(
-            ...finalBankrolls
-          );
-
-
-        /*
-         * Average profit
-         */
-        const averageProfit =
-          profits.reduce(
-            (sum, value) =>
-              sum + value,
-            0
-          ) / sessions;
-
-
-        /*
-         * Percentage of profitable sessions
-         */
-        const profitableSessions =
-          profits.filter(
-            value => value > 0
-          ).length;
-
-        const profitPercent =
-          (profitableSessions /
-            sessions) *
-          100;
-
-
-        const outcome =
-          averageFinal >
-          startBankroll
-            ? "PROFIT"
-            : "DEFICIT";
-
-
-        strategyResults.push({
-          name: strategyName,
-
-          averageFinal,
-
-          bustPercent,
-
-          maxFinal,
-
-          minFinal,
-
-          averageProfit,
-
-          profitPercent,
-
-          outcome,
-        });
-
-
-        /*
-         * Prevent unused calculation warning.
-         */
-        void totalRolls;
-        void totalShooters;
+        return;
       }
 
 
-      setResults(
-        strategyResults
+      if (
+        !Number.isFinite(
+          sessions
+        ) ||
+        sessions < 1
+      ) {
+
+        alert(
+          "Simulated sessions must be at least 1."
+        );
+
+        return;
+      }
+
+
+      setIsRunning(
+        true
       );
 
-      setIsRunning(false);
 
-    }, 50);
-  };
+      setTimeout(
+        () => {
+
+          const strategyResults:
+            StrategyResult[] = [];
+
+
+          const strategyNames:
+            StrategyName[] = [
+
+              "ACROSS REGRESSION",
+
+              "1-HIT 6/8 REGRESS",
+
+              "HEDGE (DP + 6/8)",
+
+              "PURE DARK SIDE",
+
+              "IRON CROSS",
+
+            ];
+
+
+          for (
+            const strategyName
+            of strategyNames
+          ) {
+
+            const simulationFunction =
+              strategyFunctions[
+                strategyName
+              ];
+
+
+            const finalBankrolls:
+              number[] = [];
+
+
+            const profits:
+              number[] = [];
+
+
+            let totalRolls =
+              0;
+
+
+            let totalShooters =
+              0;
+
+
+            /*
+             * Monte Carlo
+             */
+            for (
+              let session = 0;
+
+              session <
+                sessions;
+
+              session++
+            ) {
+
+              const result =
+                simulationFunction(
+                  startBankroll
+                );
+
+
+              finalBankrolls.push(
+                result.endingBankroll
+              );
+
+
+              profits.push(
+                result.profit
+              );
+
+
+              totalRolls +=
+                result.totalRolls;
+
+
+              totalShooters +=
+                result.totalShooters;
+            }
+
+
+            /*
+             * Average final bankroll
+             */
+            const averageFinal =
+              finalBankrolls.reduce(
+                (
+                  sum,
+                  value
+                ) =>
+                  sum + value,
+
+                0
+              ) /
+              sessions;
+
+
+            /*
+             * Bust
+             */
+            const bustCount =
+              finalBankrolls.filter(
+                value =>
+                  value <= 0
+              ).length;
+
+
+            const bustPercent =
+              (
+                bustCount /
+                sessions
+              ) *
+              100;
+
+
+            /*
+             * Maximum
+             */
+            const maxFinal =
+              Math.max(
+                ...finalBankrolls
+              );
+
+
+            /*
+             * Minimum
+             */
+            const minFinal =
+              Math.min(
+                ...finalBankrolls
+              );
+
+
+            /*
+             * Average profit
+             */
+            const averageProfit =
+              profits.reduce(
+                (
+                  sum,
+                  value
+                ) =>
+                  sum + value,
+
+                0
+              ) /
+              sessions;
+
+
+            /*
+             * Profitable sessions
+             */
+            const profitableSessions =
+              profits.filter(
+                value =>
+                  value > 0
+              ).length;
+
+
+            const profitPercent =
+              (
+                profitableSessions /
+                sessions
+              ) *
+              100;
+
+
+            /*
+             * Average rolls
+             */
+            const averageRolls =
+              totalRolls /
+              sessions;
+
+
+            /*
+             * Average shooters
+             */
+            const averageShooters =
+              totalShooters /
+              sessions;
+
+
+            const outcome =
+              averageFinal >
+              startBankroll
+                ? "PROFIT"
+                : "DEFICIT";
+
+
+            strategyResults.push({
+
+              name:
+                strategyName,
+
+              averageFinal,
+
+              bustPercent,
+
+              maxFinal,
+
+              minFinal,
+
+              averageProfit,
+
+              profitPercent,
+
+              averageRolls,
+
+              averageShooters,
+
+              outcome,
+
+            });
+          }
+
+
+          setResults(
+            strategyResults
+          );
+
+
+          setIsRunning(
+            false
+          );
+
+        },
+
+        50
+      );
+    };
 
 
   /* ==========================================================
      CLEAR
   ========================================================== */
 
-  const clearResults = () => {
+  const clearResults =
+    () => {
 
-    setResults([]);
-  };
+      setResults(
+        []
+      );
+    };
 
 
   /* ==========================================================
      TERMINAL OUTPUT
   ========================================================== */
 
-  const terminalText = (): string => {
+  const terminalText =
+    (): string => {
 
-    if (results.length === 0) {
+      if (
+        results.length === 0
+      ) {
 
-      return [
-        "CRAPS ULTIMATE PRO",
-        "",
-        "READY TO RUN SIMULATION",
-        "",
-        `SESSION = ${SHOOTERS_PER_SESSION} SHOOTERS`,
-        "",
-        "Enter bankroll and number of",
-        "Monte Carlo sessions.",
-      ].join("\n");
-    }
+        return [
+
+          "CRAPS ULTIMATE PRO",
+
+          "",
+
+          "READY TO RUN SIMULATION",
+
+          "",
+
+          `SESSION = ${SHOOTERS_PER_SESSION} SHOOTERS`,
+
+          "",
+
+          "IRON CROSS:",
+
+          "  $10 Field",
+
+          "  $10 Place 5",
+
+          "  $12 Place 6",
+
+          "  $12 Place 8",
+
+          "  Total Exposure = $44",
+
+          "",
+
+          "Enter bankroll and number of",
+
+          "Monte Carlo sessions.",
+
+        ].join(
+          "\n"
+        );
+      }
 
 
-    const lines: string[] = [];
+      const lines:
+        string[] = [];
 
-    lines.push(
-      "CRAPS ULTIMATE PRO -- GLOBAL PROFIT ANALYSIS"
-    );
 
-    lines.push("");
+      lines.push(
+        "CRAPS ULTIMATE PRO -- GLOBAL PROFIT ANALYSIS"
+      );
 
-    lines.push(
-      `STARTING BANKROLL : ${formatCurrency(
-        startBankroll
-      )}`
-    );
 
-    lines.push(
-      `SIMULATED SESSIONS: ${sessions.toLocaleString()}`
-    );
+      lines.push("");
 
-    lines.push(
-      `SHOOTERS / SESSION: ${SHOOTERS_PER_SESSION}`
-    );
 
-    lines.push("");
+      lines.push(
+        `STARTING BANKROLL : ${formatCurrency(
+          startBankroll
+        )}`
+      );
 
-    lines.push(
-      "STRATEGY".padEnd(27) +
+
+      lines.push(
+        `SIMULATED SESSIONS: ${sessions.toLocaleString()}`
+      );
+
+
+      lines.push(
+        `SHOOTERS / SESSION: ${SHOOTERS_PER_SESSION}`
+      );
+
+
+      lines.push("");
+
+
+      lines.push(
+        "STRATEGY".padEnd(27) +
         " | " +
         "AVG FINAL".padEnd(14) +
         " | " +
@@ -1026,96 +1819,137 @@ function App() {
         "MAX FINAL".padEnd(14) +
         " | " +
         "OUTCOME"
-    );
-
-    lines.push(
-      "-".repeat(110)
-    );
-
-
-    for (
-      const result
-      of results
-    ) {
-
-      const strategy =
-        result.name.padEnd(27);
-
-      const average =
-        formatCurrency(
-          result.averageFinal
-        ).padEnd(14);
-
-      const bust =
-        `${result.bustPercent.toFixed(
-          1
-        )}%`.padEnd(9);
-
-      const maximum =
-        formatCurrency(
-          result.maxFinal
-        ).padEnd(14);
-
-      lines.push(
-        `${strategy} | ${average} | ${bust} | ${maximum} | ${result.outcome}`
-      );
-    }
-
-
-    lines.push("");
-
-    lines.push(
-      "ADDITIONAL STATISTICS"
-    );
-
-    lines.push(
-      "-".repeat(110)
-    );
-
-
-    for (
-      const result
-      of results
-    ) {
-
-      lines.push(
-        `${result.name}:`
       );
 
-      lines.push(
-        `  Average Profit : ${formatCurrency(
-          result.averageProfit
-        )}`
-      );
 
       lines.push(
-        `  Profit Sessions: ${result.profitPercent.toFixed(
-          1
-        )}%`
+        "-".repeat(
+          110
+        )
       );
 
-      lines.push(
-        `  Min Final      : ${formatCurrency(
-          result.minFinal
-        )}`
-      );
 
-      lines.push(
-        `  Max Final      : ${formatCurrency(
-          result.maxFinal
-        )}`
-      );
+      for (
+        const result
+        of results
+      ) {
+
+        const strategy =
+          result.name.padEnd(
+            27
+          );
+
+
+        const average =
+          formatCurrency(
+            result.averageFinal
+          ).padEnd(
+            14
+          );
+
+
+        const bust =
+          `${result.bustPercent.toFixed(
+            1
+          )}%`.padEnd(
+            9
+          );
+
+
+        const maximum =
+          formatCurrency(
+            result.maxFinal
+          ).padEnd(
+            14
+          );
+
+
+        lines.push(
+          `${strategy} | ${average} | ${bust} | ${maximum} | ${result.outcome}`
+        );
+      }
+
 
       lines.push("");
-    }
 
 
-    lines.push(
-      "SIMULATION COMPLETE."
-    );
+      lines.push(
+        "ADDITIONAL STATISTICS"
+      );
 
-    return lines.join("\n");
-  };
+
+      lines.push(
+        "-".repeat(
+          110
+        )
+      );
+
+
+      for (
+        const result
+        of results
+      ) {
+
+        lines.push(
+          `${result.name}:`
+        );
+
+
+        lines.push(
+          `  Average Profit  : ${formatCurrency(
+            result.averageProfit
+          )}`
+        );
+
+
+        lines.push(
+          `  Profit Sessions : ${result.profitPercent.toFixed(
+            1
+          )}%`
+        );
+
+
+        lines.push(
+          `  Min Final       : ${formatCurrency(
+            result.minFinal
+          )}`
+        );
+
+
+        lines.push(
+          `  Max Final       : ${formatCurrency(
+            result.maxFinal
+          )}`
+        );
+
+
+        lines.push(
+          `  Average Rolls   : ${result.averageRolls.toFixed(
+            1
+          )}`
+        );
+
+
+        lines.push(
+          `  Average Shooters: ${result.averageShooters.toFixed(
+            1
+          )}`
+        );
+
+
+        lines.push("");
+      }
+
+
+      lines.push(
+        "SIMULATION COMPLETE."
+      );
+
+
+      return lines.join(
+        "\n"
+      );
+    };
 
 
   /* ==========================================================
@@ -1123,6 +1957,7 @@ function App() {
   ========================================================== */
 
   return (
+
     <div className="app">
 
       <div className="app-container">
@@ -1134,10 +1969,16 @@ function App() {
           <h1>
             🎲 Craps Ultimate Pro
           </h1>
+	  
+	  <p className="subtitle">
+	    Developed by: Long Nguyen
+          </p>
 
           <p className="subtitle">
+
             Global Profit Analysis &
             Monte Carlo Simulator
+
           </p>
 
         </header>
@@ -1150,21 +1991,32 @@ function App() {
           <div className="form-group">
 
             <label htmlFor="bankroll">
+
               Starting Bankroll ($)
+
             </label>
+
 
             <input
               id="bankroll"
+
               type="number"
+
               min="1"
+
               step="1"
-              value={startBankroll}
-              onChange={(event) =>
-                setStartBankroll(
-                  Number(
-                    event.target.value
+
+              value={
+                startBankroll
+              }
+
+              onChange={
+                event =>
+                  setStartBankroll(
+                    Number(
+                      event.target.value
+                    )
                   )
-                )
               }
             />
 
@@ -1174,28 +2026,39 @@ function App() {
           <div className="form-group">
 
             <label htmlFor="sessions">
+
               Simulated Sessions
+
             </label>
+
 
             <input
               id="sessions"
+
               type="number"
+
               min="1"
+
               step="1"
-              value={sessions}
-              onChange={(event) =>
-                setSessions(
-                  Number(
-                    event.target.value
+
+              value={
+                sessions
+              }
+
+              onChange={
+                event =>
+                  setSessions(
+                    Number(
+                      event.target.value
+                    )
                   )
-                )
               }
             />
 
           </div>
 
 
-          {/* SESSION DEFINITION */}
+          {/* SESSION */}
 
           <div className="session-info">
 
@@ -1203,26 +2066,36 @@ function App() {
               Session Definition
             </strong>
 
+
             <p>
+
               Each simulated session
               contains exactly{" "}
 
               <strong>
-                {SHOOTERS_PER_SESSION} shooters
+                {SHOOTERS_PER_SESSION}
+                {" "}shooters
               </strong>
               .
+
             </p>
 
-            <p>
-              Each shooter continues until
-              the point is made or the
-              shooter seven-outs.
-            </p>
 
             <p>
-              Therefore the number of rolls
-              is variable from session to
-              session.
+
+              Each shooter continues
+              until the point is made
+              or the shooter seven-outs.
+
+            </p>
+
+
+            <p>
+
+              Therefore the number of
+              rolls varies from session
+              to session.
+
             </p>
 
           </div>
@@ -1234,10 +2107,14 @@ function App() {
 
             <button
               className="run-button"
+
               onClick={
                 runSimulations
               }
-              disabled={isRunning}
+
+              disabled={
+                isRunning
+              }
             >
 
               {isRunning
@@ -1249,12 +2126,18 @@ function App() {
 
             <button
               className="clear-button"
+
               onClick={
                 clearResults
               }
-              disabled={isRunning}
+
+              disabled={
+                isRunning
+              }
             >
+
               CLEAR
+
             </button>
 
           </div>
@@ -1279,6 +2162,7 @@ function App() {
                 1
               </span>
 
+
               <div>
 
                 <strong>
@@ -1286,7 +2170,7 @@ function App() {
                 </strong>
 
                 <small>
-                  Real Craps shooters
+                  20-shooter session
                 </small>
 
               </div>
@@ -1300,6 +2184,7 @@ function App() {
                 2
               </span>
 
+
               <div>
 
                 <strong>
@@ -1307,7 +2192,7 @@ function App() {
                 </strong>
 
                 <small>
-                  Real Craps shooters
+                  20-shooter session
                 </small>
 
               </div>
@@ -1321,6 +2206,7 @@ function App() {
                 3
               </span>
 
+
               <div>
 
                 <strong>
@@ -1328,7 +2214,7 @@ function App() {
                 </strong>
 
                 <small>
-                  Real Craps shooters
+                  20-shooter session
                 </small>
 
               </div>
@@ -1342,6 +2228,7 @@ function App() {
                 4
               </span>
 
+
               <div>
 
                 <strong>
@@ -1349,7 +2236,29 @@ function App() {
                 </strong>
 
                 <small>
-                  Real Craps shooters
+                  20-shooter session
+                </small>
+
+              </div>
+
+            </div>
+
+
+            <div className="strategy-card">
+
+              <span className="strategy-number">
+                5
+              </span>
+
+
+              <div>
+
+                <strong>
+                  IRON CROSS
+                </strong>
+
+                <small>
+                  $5 Field + $5 5/6/8
                 </small>
 
               </div>
@@ -1371,10 +2280,13 @@ function App() {
               Global Profit Analysis
             </h2>
 
+
             {results.length > 0 && (
 
               <span className="complete-badge">
+
                 COMPLETE
+
               </span>
 
             )}
@@ -1385,7 +2297,9 @@ function App() {
           <div className="terminal">
 
             <pre>
+
               {terminalText()}
+
             </pre>
 
           </div>
@@ -1393,7 +2307,7 @@ function App() {
         </section>
 
 
-        {/* RESULTS TABLE */}
+        {/* TABLE */}
 
         {results.length > 0 && (
 
@@ -1441,6 +2355,10 @@ function App() {
                     </th>
 
                     <th>
+                      Avg Rolls
+                    </th>
+
+                    <th>
                       Outcome
                     </th>
 
@@ -1461,44 +2379,82 @@ function App() {
                       >
 
                         <td className="strategy-cell">
-                          {result.name}
+
+                          {
+                            result.name
+                          }
+
                         </td>
 
+
                         <td>
+
                           {formatCurrency(
                             result.averageFinal
                           )}
+
                         </td>
 
+
                         <td>
+
                           {formatCurrency(
                             result.averageProfit
                           )}
+
                         </td>
 
-                        <td>
-                          {result.profitPercent.toFixed(
-                            1
-                          )}%
-                        </td>
 
                         <td>
-                          {result.bustPercent.toFixed(
-                            1
-                          )}%
+
+                          {
+                            result.profitPercent.toFixed(
+                              1
+                            )
+                          }%
+
                         </td>
 
+
                         <td>
+
+                          {
+                            result.bustPercent.toFixed(
+                              1
+                            )
+                          }%
+
+                        </td>
+
+
+                        <td>
+
                           {formatCurrency(
                             result.minFinal
                           )}
+
                         </td>
 
+
                         <td>
+
                           {formatCurrency(
                             result.maxFinal
                           )}
+
                         </td>
+
+
+                        <td>
+
+                          {
+                            result.averageRolls.toFixed(
+                              1
+                            )
+                          }
+
+                        </td>
+
 
                         <td>
 
@@ -1506,13 +2462,17 @@ function App() {
                             className={
                               result.outcome ===
                               "PROFIT"
+
                                 ? "profit"
+
                                 : "deficit"
                             }
                           >
+
                             {
                               result.outcome
                             }
+
                           </span>
 
                         </td>
@@ -1543,6 +2503,10 @@ function App() {
 
           <p>
             Session = 20 Shooters
+          </p>
+
+          <p>
+            Strategies = 5
           </p>
 
           <p>
