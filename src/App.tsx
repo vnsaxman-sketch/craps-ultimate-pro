@@ -1268,10 +1268,10 @@ function simulateIronCross(
          * Real casinos generally use
          * whole-dollar payout conventions.
          *
-         * We use the standard $6 payout
-         * for a $6 place bet approximation,
+         * We use the standard $12 payout
+         * for a $12 place bet approximation,
          * but because this strategy uses
-         * $5 units we round to $6 here.
+         * $10 units we round to $12 here.
          */
         balance +=
           IRON_CROSS_BET +
@@ -2258,7 +2258,7 @@ function App() {
                 </strong>
 
                 <small>
-                  $5 Field + $5 5/6/8
+                  $10 Field + $10 5/6/8
                 </small>
 
               </div>
